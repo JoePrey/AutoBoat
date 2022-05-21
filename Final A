@@ -2,9 +2,13 @@
 
 //6 is rudder
 //10 is throttle
-//12 GEAR / HOLD 
-//5 AIL / ROTATE 
+//12 GEAR / HOLD
+//5 AIL / ROTATE
 const int pwmPIN[] = {6, 10, 12, 5, 7, 8}; // an array to identify the PWM input pins (the array can be any length)
+
+const int RudderOutpinPin = 3;  // identify the pins that each servo signal wire is connected to
+const int LeftMotorPin = 11;
+const int RightMotorPin = 9;
 
 // first pin is channel 1, second is channel 2...etc
 int RC_inputs = 6;                // The number of pins in pwmPIN that are connected to an RC receiver. Addition pins not connected to an RC receiver could be used for any other purpose i.e. detecting the echo pulse on an HC-SR04 ultrasonic distance sensor
@@ -83,7 +87,7 @@ void pwmPIN_to_port() {
     else if (pwmPIN[i] == 5 || pwmPIN[i] == A5 || pwmPIN[i] == 13)   pwmPIN_reg[i] = 0b00100000;
     else if (pwmPIN[i] == 6)                                         pwmPIN_reg[i] = 0b01000000;
     else if (pwmPIN[i] == 7)                                         pwmPIN_reg[i] = 0b10000000;
- 
+
   }
 }
 
@@ -364,9 +368,9 @@ float RC_in[channels];                    // an array to store the calibrated in
 
 // Select Servo Direction, Rates and Sub-trim (the size of each array must match the number of servos)
 
-boolean servo_dir[] = {0,0,0,0};     // Direction: 0 is normal, 1 is reverse
-float servo_rates[] = {1,1,1,1};  // Rates: range 0 to 2 (1 = +-500us (NORMAL), 2 = +-1000us (MAX)): The amount of servo deflection in both directions
-float servo_subtrim[] = {0.0,0.0,0.0,0.0};  // Subtrimrange -1 to +1 (-1 = 1000us, 0 = 1500us, 1 = 2000us): The neutral position of the servo
+boolean servo_dir[] = {0, 0, 0, 0};  // Direction: 0 is normal, 1 is reverse
+float servo_rates[] = {1, 1, 1, 1}; // Rates: range 0 to 2 (1 = +-500us (NORMAL), 2 = +-1000us (MAX)): The amount of servo deflection in both directions
+float servo_subtrim[] = {0.0, 0.0, 0.0, 0.0}; // Subtrimrange -1 to +1 (-1 = 1000us, 0 = 1500us, 1 = 2000us): The neutral position of the servo
 boolean servo_mix_on = false;
 
 #include <TinyGPS.h>
@@ -397,24 +401,6 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define YPOS   1
 #define DELTAY 2
 
-static const unsigned char PROGMEM logo_bmp[] =
-{ 0b00000000, 0b11000000,
-  0b00000001, 0b11000000,
-  0b00000001, 0b11000000,
-  0b00000011, 0b11100000,
-  0b11110011, 0b11100000,
-  0b11111110, 0b11111000,
-  0b01111110, 0b11111111,
-  0b00110011, 0b10011111,
-  0b00011111, 0b11111100,
-  0b00001101, 0b01110000,
-  0b00011011, 0b10100000,
-  0b00111111, 0b11100000,
-  0b00111111, 0b11110000,
-  0b01111100, 0b11110000,
-  0b01110000, 0b01110000,
-  0b00000000, 0b00110000 };
-
 Servo Rudder;
 Servo RightMotor;
 Servo LeftMotor;
@@ -439,9 +425,7 @@ float flat = -99.9, flon = 99.9;
 int LCDINTERVAL = 1000;
 unsigned long time_now = 0;
 
-const int RudderOutpinPin = 3;  // identify the pins that each servo signal wire is connected to
-const int LeftMotorPin = 11;
-const int RightMotorPin = 9;
+
 
 void bootSequence()
 {
@@ -459,7 +443,7 @@ void testanimate(const uint8_t *bitmap, uint8_t w, uint8_t h) {
   int8_t f, icons[NUMFLAKES][3];
 
   // Initialize 'snowflake' positions
-  for(f=0; f< NUMFLAKES; f++) {
+  for (f = 0; f < NUMFLAKES; f++) {
     icons[f][XPOS]   = random(1 - LOGO_WIDTH, display.width());
     icons[f][YPOS]   = -LOGO_HEIGHT;
     icons[f][DELTAY] = random(1, 6);
@@ -471,11 +455,11 @@ void testanimate(const uint8_t *bitmap, uint8_t w, uint8_t h) {
     Serial.println(icons[f][DELTAY], DEC);
   }
 
-  for(;;) { // Loop forever...
+  for (;;) { // Loop forever...
     display.clearDisplay(); // Clear the display buffer
 
     // Draw each snowflake:
-    for(f=0; f< NUMFLAKES; f++) {
+    for (f = 0; f < NUMFLAKES; f++) {
       display.drawBitmap(icons[f][XPOS], icons[f][YPOS], bitmap, w, h, SSD1306_WHITE);
     }
 
@@ -483,7 +467,7 @@ void testanimate(const uint8_t *bitmap, uint8_t w, uint8_t h) {
     delay(200);        // Pause for 1/10 second
 
     // Then update coordinates of each flake...
-    for(f=0; f< NUMFLAKES; f++) {
+    for (f = 0; f < NUMFLAKES; f++) {
       icons[f][YPOS] += icons[f][DELTAY];
       // If snowflake is off the bottom of the screen...
       if (icons[f][YPOS] >= display.height()) {
@@ -500,40 +484,37 @@ void testdrawchar(String message) {
 
   display.setTextSize(1);             // Normal 1:1 pixel scale
   display.setTextColor(WHITE);        // Draw white text
-  display.setCursor(0,0);             // Start at top-left corner
+  display.setCursor(0, 0);            // Start at top-left corner
   display.println(message);
- display.display();
- 
+  display.display();
+
 }
 
 void setupI2C()
 {
 
-   if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
+    for (;;); // Don't proceed, loop forever
   }
   display.display();
   display.clearDisplay();
-    
+
 }
 void setup() {
 
-  
+
   setupI2C();
   bootSequence();
 
-  Rudder.attach(RudderOutpinPin); // attach the servo library to each servo pin, and define min and max uS values 
+  Rudder.attach(RudderOutpinPin); // attach the servo library to each servo pin, and define min and max uS values
   RightMotor.attach(RightMotorPin); // attach the servo library to each servo pin, and define min and max uS values
   LeftMotor.attach(LeftMotorPin);
-    
-  //Pump1.attach(PumpOutputPin);
-  //Pump2.attach(Pump2OutputPin);
 
   setup_pwmRead();
 
   Serial.begin(9600);
-  pinMode(LED_BUILTIN, OUTPUT);  
+  pinMode(LED_BUILTIN, OUTPUT);
   pinMode(3, OUTPUT);
 
 }
@@ -541,56 +522,53 @@ void setup() {
 
 void loop() {
 
-    now = millis();
+  now = millis();
 
-    if (RC_avail() || now - rc_update > 25) { // if RC data is available or 25ms has passed since last update (adjust to > frame rate of receiver)
-  
-      rc_update = now;
-  
-      for (int i = 0; i < channels; i++) {    // run through each RC channel
-        int CH = i + 1;
-        RC_in[i] = RC_decode(CH);             // decode receiver channel and apply failsafe
-      }
+  if (RC_avail() || now - rc_update > 25) { // if RC data is available or 25ms has passed since last update (adjust to > frame rate of receiver)
+
+    rc_update = now;
+
+    for (int i = 0; i < channels; i++) {    // run through each RC channel
+      int CH = i + 1;
+      RC_in[i] = RC_decode(CH);             // decode receiver channel and apply failsafe
     }
-          
-    RudderValue = calc_uS(RC_in[0], 1);    
-    ThrottleValue = calc_uS(RC_in[1], 2);
-    holdValue = calc_uS(RC_in[2], 3);
-    rotateValue = calc_uS(RC_in[3], 4);
+  }
+
+  RudderValue = calc_uS(RC_in[0], 1);
+  ThrottleValue = calc_uS(RC_in[1], 2);
+  holdValue = calc_uS(RC_in[2], 3);
+  rotateValue = calc_uS(RC_in[3], 4);
 
 
-    if (holdValue > 1500){
-      holdOn = false;
-    } else {
-      holdOn = true;
-    }
+  if (holdValue > 1500) {
+    holdOn = false;
+  } else {
+    holdOn = true;
+  }
 
 
-    if (rotateValue > 1500){
-      rotateOn = false;
-    } else {
-      rotateOn = true;
-    }  
-        
-    //Pump1.writeMicroseconds(pump1Value > 1500 ? 800 : 2000);
-    //Pump2.writeMicroseconds(pump1Value > 1500 ? 800 : 2000);
+  if (rotateValue > 1500) {
+    rotateOn = false;
+  } else {
+    rotateOn = true;
+  }
 
-    if (holdOn) {
-      
-    } 
-    else if(rotateOn)
-    {
-        RightMotor.writeMicroseconds(1484);
-        LeftMotor.writeMicroseconds(1565);      
-        //Rudder.writeMicroseconds(1814);
-    }
-    else
-    {
-        Rudder.writeMicroseconds(RudderValue);
-        RightMotor.writeMicroseconds(ThrottleValue);
-        LeftMotor.writeMicroseconds(ThrottleValue); 
-    }
- 
+  if (holdOn) {
+
+  }
+  else if (rotateOn)
+  {
+    RightMotor.writeMicroseconds(1484);
+    LeftMotor.writeMicroseconds(1565);
+    //Rudder.writeMicroseconds(1814);
+  }
+  else
+  {
+    Rudder.writeMicroseconds(RudderValue);
+    RightMotor.writeMicroseconds(ThrottleValue);
+    LeftMotor.writeMicroseconds(ThrottleValue);
+  }
+
 
   while (Serial.available())
   {
@@ -600,9 +578,9 @@ void loop() {
   }
 
   if (millis() > time_now + LCDINTERVAL) {
-    
+
     time_now = millis();
-    
+
     writeLCD();
 
     if (newData)
@@ -615,18 +593,18 @@ void loop() {
 
     time_now = now;
   }
-  
+
 }
 
 void writeLCD()
 {
 
-   display.clearDisplay();
+  display.clearDisplay();
 
   display.setTextSize(1);             // Normal 1:1 pixel scale
   display.setTextColor(WHITE);        // Draw white text
-  display.setCursor(0,0);             // Start at top-left corner
-  
+  display.setCursor(0, 0);            // Start at top-left corner
+
   display.setCursor(0, 0);
   display.print("GPS SAT:" + String(gps.satellites() > 100 ? 0 : gps.satellites()));
   display.print(",LAT: " + String(flat));
@@ -636,17 +614,17 @@ void writeLCD()
   display.print("T:");
   display.print(ThrottleValue);
   display.print("Rudder:");
-  display.print(RudderValue);      
-  
+  display.print(RudderValue);
+
   if (rotateOn)
   {
     display.print(":P");
-  }  
+  }
 
   if (holdOn)
   {
-     display.print(":H");
-  } 
+    display.print(":H");
+  }
   display.display();
 }
 
@@ -660,8 +638,8 @@ int calc_uS(float cmd, int servo) {                               // cmd = comma
   cmd = 1500 + (cmd * servo_rates[i] * dir + servo_subtrim[i]) * 500; // apply servo rates and sub trim, then convert to a uS value
 
   if (cmd > 2500) cmd = 2500;                                     // limit pulsewidth to the range 500 to 2500us
-  else if (cmd < 500) 
-  {    
+  else if (cmd < 500)
+  {
     cmd = RC_failsafe[i];
   }
 
