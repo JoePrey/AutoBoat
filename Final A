@@ -373,260 +373,6 @@ float servo_rates[] = {1, 1, 1, 1}; // Rates: range 0 to 2 (1 = +-500us (NORMAL)
 float servo_subtrim[] = {0.0, 0.0, 0.0, 0.0}; // Subtrimrange -1 to +1 (-1 = 1000us, 0 = 1500us, 1 = 2000us): The neutral position of the servo
 boolean servo_mix_on = false;
 
-#include <TinyGPS.h>
-#include <LiquidCrystal.h>
-#include <Servo.h> // include the servo library to control the servos
-#include <SPI.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
-
-
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 32 // OLED display height, in pixels
-
-#define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
-
-#define NUMFLAKES     10 // Number of snowflakes in the animation example
-
-#define LOGO_HEIGHT   16
-#define LOGO_WIDTH    16
-
-
-#define XPOS   0 // Indexes into the 'icons' array in function below
-#define YPOS   1
-#define DELTAY 2
-
-Servo Rudder;
-Servo RightMotor;
-Servo LeftMotor;
-
-TinyGPS gps;
-
-int RudderValue;      // variables to store the pulse widths to be sent to the servo
-int ThrottleValue;
-int rotateValue;
-int holdValue;
-
-
-bool holdOn = false;
-bool rotateOn = false;
-bool switch2On = false;
-
-bool newData = false;
-unsigned long chars;
-unsigned short sentences, failed;
-float flat = -99.9, flon = 99.9;
-
-int LCDINTERVAL = 1000;
-unsigned long time_now = 0;
-
-
-
-void bootSequence()
-{
-  display.clearDisplay();
-
-  display.setTextSize(2); // Draw 2X-scale text
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(10, 0);
-  display.println(F("Booting"));
-  display.display();      // Show initial text
-  delay(1000);
-}
-
-void testanimate(const uint8_t *bitmap, uint8_t w, uint8_t h) {
-  int8_t f, icons[NUMFLAKES][3];
-
-  // Initialize 'snowflake' positions
-  for (f = 0; f < NUMFLAKES; f++) {
-    icons[f][XPOS]   = random(1 - LOGO_WIDTH, display.width());
-    icons[f][YPOS]   = -LOGO_HEIGHT;
-    icons[f][DELTAY] = random(1, 6);
-    Serial.print(F("x: "));
-    Serial.print(icons[f][XPOS], DEC);
-    Serial.print(F(" y: "));
-    Serial.print(icons[f][YPOS], DEC);
-    Serial.print(F(" dy: "));
-    Serial.println(icons[f][DELTAY], DEC);
-  }
-
-  for (;;) { // Loop forever...
-    display.clearDisplay(); // Clear the display buffer
-
-    // Draw each snowflake:
-    for (f = 0; f < NUMFLAKES; f++) {
-      display.drawBitmap(icons[f][XPOS], icons[f][YPOS], bitmap, w, h, SSD1306_WHITE);
-    }
-
-    display.display(); // Show the display buffer on the screen
-    delay(200);        // Pause for 1/10 second
-
-    // Then update coordinates of each flake...
-    for (f = 0; f < NUMFLAKES; f++) {
-      icons[f][YPOS] += icons[f][DELTAY];
-      // If snowflake is off the bottom of the screen...
-      if (icons[f][YPOS] >= display.height()) {
-        // Reinitialize to a random position, just off the top
-        icons[f][XPOS]   = random(1 - LOGO_WIDTH, display.width());
-        icons[f][YPOS]   = -LOGO_HEIGHT;
-        icons[f][DELTAY] = random(1, 6);
-      }
-    }
-  }
-}
-void testdrawchar(String message) {
-  display.clearDisplay();
-
-  display.setTextSize(1);             // Normal 1:1 pixel scale
-  display.setTextColor(WHITE);        // Draw white text
-  display.setCursor(0, 0);            // Start at top-left corner
-  display.println(message);
-  display.display();
-
-}
-
-void setupI2C()
-{
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println(F("SSD1306 allocation failed"));
-    for (;;); // Don't proceed, loop forever
-  }
-  display.display();
-  display.clearDisplay();
-
-}
-void setup() {
-
-
-  setupI2C();
-  bootSequence();
-
-  Rudder.attach(RudderOutpinPin); // attach the servo library to each servo pin, and define min and max uS values
-  RightMotor.attach(RightMotorPin); // attach the servo library to each servo pin, and define min and max uS values
-  LeftMotor.attach(LeftMotorPin);
-
-  setup_pwmRead();
-
-  Serial.begin(9600);
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(3, OUTPUT);
-
-}
-
-
-void loop() {
-
-  now = millis();
-
-  if (RC_avail() || now - rc_update > 25) { // if RC data is available or 25ms has passed since last update (adjust to > frame rate of receiver)
-
-    rc_update = now;
-
-    for (int i = 0; i < channels; i++) {    // run through each RC channel
-      int CH = i + 1;
-      RC_in[i] = RC_decode(CH);             // decode receiver channel and apply failsafe
-    }
-  }
-
-  RudderValue = calc_uS(RC_in[0], 1);
-  ThrottleValue = calc_uS(RC_in[1], 2);
-  holdValue = calc_uS(RC_in[2], 3);
-  rotateValue = calc_uS(RC_in[3], 4);
-
-
-  if (holdValue > 1500) {
-    holdOn = false;
-  } else {
-    holdOn = true;
-  }
-
-
-  if (rotateValue > 1500) {
-    rotateOn = false;
-  } else {
-    rotateOn = true;
-  }
-
-  if (holdOn) {
-
-  }
-  else if (rotateOn)
-  {
-    RightMotor.writeMicroseconds(1484);
-    LeftMotor.writeMicroseconds(1565);
-    //Rudder.writeMicroseconds(1814);
-  }
-  else
-  {
-    Rudder.writeMicroseconds(RudderValue);
-    RightMotor.writeMicroseconds(ThrottleValue);
-    LeftMotor.writeMicroseconds(ThrottleValue);
-  }
-
-
-  while (Serial.available())
-  {
-    char c = Serial.read();
-    if (gps.encode(c)) // Did a new valid sentence come in?
-      newData = true;
-  }
-
-  if (millis() > time_now + LCDINTERVAL) {
-
-    time_now = millis();
-
-    writeLCD();
-
-    if (newData)
-    {
-      unsigned long age;
-      gps.f_get_position(&flat, &flon, &age);
-    }
-
-    gps.stats(&chars, &sentences, &failed);
-
-    time_now = now;
-  }
-
-}
-
-void writeLCD()
-{
-
-  display.clearDisplay();
-
-  display.setTextSize(1);             // Normal 1:1 pixel scale
-  display.setTextColor(WHITE);        // Draw white text
-  display.setCursor(0, 0);            // Start at top-left corner
-
-  display.setCursor(0, 0);
-  display.print("GPS SAT:" + String(gps.satellites() > 100 ? 0 : gps.satellites()));
-  display.print(",LAT: " + String(flat));
-  display.print(", LONG: " + String(flon));
-  display.print(", LONG: " + String(flon));
-
-  display.print("T:");
-  display.print(ThrottleValue);
-  display.print("Rudder:");
-  display.print(RudderValue);
-
-  if (rotateOn)
-  {
-    display.print(":P");
-  }
-
-  if (holdOn)
-  {
-    display.print(":H");
-  }
-  display.display();
-}
 
 int calc_uS(float cmd, int servo) {                               // cmd = commanded position +-100%
   // servo = servo num (to apply correct direction, rates and trim)
@@ -644,4 +390,203 @@ int calc_uS(float cmd, int servo) {                               // cmd = comma
   }
 
   return cmd;
+}
+
+#include <TinyGPS.h>
+#include <LiquidCrystal.h>
+#include <Servo.h> // include the servo library to control the servos
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+
+#define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+Servo Rudder;
+Servo RightMotor;
+Servo LeftMotor;
+TinyGPS gps;
+
+int RudderValue;      // variables to store the pulse widths to be sent to the servo
+int ThrottleValue;
+int rotateValue;
+int holdValue;
+
+bool holdOn = false;
+bool rotateOn = false;
+
+
+bool newData = false;
+unsigned long chars;
+unsigned short sentences, failed;
+float flat = 42.3057, flon = -71.1162;
+int LCDINTERVAL = 1000;
+unsigned long time_now = 0;
+float maxSpeed = 0.0;
+
+
+
+void bootSequence() {
+
+  display.clearDisplay();
+
+  display.setTextSize(2); // Draw 2X-scale text
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(10, 0);
+  display.println(F("Booting..."));
+  display.display();
+  display.dim(false);
+  delay(1000);
+}
+
+void setupI2C() {
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;); // Don't proceed, loop forever
+  }
+
+  display.display();
+  display.clearDisplay();
+}
+
+void setupRC() {
+
+  Rudder.attach(RudderOutpinPin);
+  RightMotor.attach(RightMotorPin);
+  LeftMotor.attach(LeftMotorPin);
+}
+
+void setup() {
+
+  //Setup Display
+  setupI2C();
+
+  //Show boot message..
+  bootSequence();
+
+  //Setup motor / rudder out
+  setupRC();
+
+  //setup RC read
+  setup_pwmRead();
+
+
+  Serial.begin(9600);
+
+  // Random stuff
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(3, OUTPUT);
+
+}
+
+void loop() {
+
+  now = millis();
+
+  if (RC_avail() || now - rc_update > 25) { // if RC data is available or 25ms has passed since last update (adjust to > frame rate of receiver)
+
+    rc_update = now;
+
+    for (int i = 0; i < channels; i++) {    // run through each RC channel
+      int CH = i + 1;
+      RC_in[i] = RC_decode(CH);             // decode receiver channel and apply failsafe
+    }
+  }
+
+  //Read RC Values
+  RudderValue = calc_uS(RC_in[0], 1);
+  ThrottleValue = calc_uS(RC_in[1], 2);
+  holdValue = calc_uS(RC_in[2], 3);
+  rotateValue = calc_uS(RC_in[3], 4);
+
+  //Process Status
+  if (holdValue > 1500) {
+    holdOn = false;
+  } else {
+    holdOn = true;
+  }
+
+  if (rotateValue > 1500) {
+    rotateOn = false;
+  } else {
+    rotateOn = true;
+  }
+
+  if (holdOn) {
+    // GPS Code will go here
+  }
+  else if (rotateOn)
+  {
+    RightMotor.writeMicroseconds(1484);
+    LeftMotor.writeMicroseconds(1565);
+  }
+  else
+  {
+    Rudder.writeMicroseconds(RudderValue);
+    RightMotor.writeMicroseconds(ThrottleValue);
+    LeftMotor.writeMicroseconds(ThrottleValue);
+  }
+
+  // GPS Parsing
+  while (Serial.available())
+  {
+    char c = Serial.read();
+    if (gps.encode(c)) // Did a new valid sentence come in?
+      newData = true;
+  }
+
+  if (millis() > time_now + LCDINTERVAL) {
+    time_now = millis();
+
+    writeLCD();
+
+    if (newData)
+    {
+      unsigned long age;
+      gps.f_get_position(&flat, &flon, &age);
+    }
+
+    gps.stats(&chars, &sentences, &failed);
+
+    if ( gps.f_speed_kmph() > maxSpeed)
+    {
+      maxSpeed = gps.f_speed_kmph();
+    }
+
+    time_now = now;
+  }
+
+}
+
+void writeLCD(){
+
+  display.clearDisplay();
+
+  display.setTextSize(1);             // Normal 1:1 pixel scale
+  display.setTextColor(WHITE);        // Draw white text
+  display.setCursor(0, 0);            // Start at top-left corner
+
+  display.println("SATS:" + String(gps.satellites()) + " | C: " + String(gps.f_course()));
+  display.println("M:" + String(maxSpeed) + " |H:" + String(rotateOn ? " * " : "0") + " |R:" + String((holdOn ? "*" : "0")));
+  
+  if(gps.satellites() > 100)
+  {
+    display.println("*-- NO LOCK --*");  
+  }
+  else
+  {
+    display.println(String(flat) + "," +  String(flon));  
+  }  
+  
+  display.println("T:" + String(ThrottleValue) + " | R: " + String(RudderValue) );
+  display.display();
+
 }
