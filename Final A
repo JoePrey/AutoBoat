@@ -1,11 +1,6 @@
 // PWM input pins, any of the following pins can be used: digital 0 - 13 or analog A0 - A5
 
-//6 is rudder
-//10 is throttle
-//12 GEAR / HOLD
-//5 AIL / ROTATE
 const int pwmPIN[] = {6, 10, 12, 5, 7, 8}; // an array to identify the PWM input pins (the array can be any length)
-
 const int RudderOutpinPin = 3;  // identify the pins that each servo signal wire is connected to
 const int LeftMotorPin = 11;
 const int RightMotorPin = 9;
@@ -21,10 +16,10 @@ int RC_inputs = 6;                // The number of pins in pwmPIN that are conne
 // if the RC_min[], RC_mid[], RC_max[] are empty or have missing data the calibration will default to min 1000us, mid 1500us and max 2000us.
 
 //SANWA 6CH 40MHz with corona RP6D1
-//                RUD    THR     HOLD     ROT     DIAL  SLIDER
-int RC_min[6] = { 992,    780,   984,      984,    1056,   1116};
-int RC_mid[6] = { 1520,   1538,   1538,   1538,   1374,   1460};
-int RC_max[6] = { 2004,   2098,   1992,  1992,   1876,   1796};
+//                RUD - 6    THR - 10    HOLD - 12    ROT - 5     DIAL -7   SLIDER -8
+int RC_min[6] = { 992,       780,        984,         984,        1056,   1116};
+int RC_mid[6] = { 1520,      1538,       1538,        1538,       1374,   1460};
+int RC_max[6] = { 2004,      2098,       1992,        1992,       1876,   1796};
 
 
 // fail safe positions
@@ -370,7 +365,7 @@ float RC_in[channels];                    // an array to store the calibrated in
 
 boolean servo_dir[] = {0, 0, 0, 0};  // Direction: 0 is normal, 1 is reverse
 float servo_rates[] = {1, 1, 1, 1}; // Rates: range 0 to 2 (1 = +-500us (NORMAL), 2 = +-1000us (MAX)): The amount of servo deflection in both directions
-float servo_subtrim[] = {0.0, 0.0, 0.0, 0.0}; // Subtrimrange -1 to +1 (-1 = 1000us, 0 = 1500us, 1 = 2000us): The neutral position of the servo
+float servo_subtrim[] = {0, 0, 0, 0}; // Subtrimrange -1 to +1 (-1 = 1000us, 0 = 1500us, 1 = 2000us): The neutral position of the servo
 boolean servo_mix_on = false;
 
 
@@ -522,6 +517,10 @@ void loop() {
 
   if (holdOn) {
     // GPS Code will go here
+    //lets use this for slow cruise
+    RightMotor.writeMicroseconds(1565);
+    LeftMotor.writeMicroseconds(1565);
+    Rudder.writeMicroseconds(RudderValue);
   }
   else if (rotateOn)
   {
@@ -575,7 +574,7 @@ void writeLCD(){
   display.setCursor(0, 0);            // Start at top-left corner
 
   display.println("SATS:" + String(gps.satellites()) + " | C: " + String(gps.f_course()));
-  display.println("M:" + String(maxSpeed) + " |H:" + String(rotateOn ? " * " : "0") + " |R:" + String((holdOn ? "*" : "0")));
+  display.println("M:" + String(maxSpeed) + " |H:" + String(holdOn ? " * " : "0") + " |R:" + String((rotateOn ? "*" : "0")));
   
   if(gps.satellites() > 100)
   {
